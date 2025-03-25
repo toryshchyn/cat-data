@@ -15,7 +15,7 @@ app.use(cors({
 }));
 
 app.get('/', (req: Request, res: Response) => {
-  res.send('Hello from Express + TypeScript');
+  res.send('Hello from CAT API');
 });
 
 app.get('/api/containers', (req: Request, res: Response) => {
