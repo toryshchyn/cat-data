@@ -2,6 +2,8 @@ import express, { Request, Response } from 'express';
 import { checkJwt } from './middlewares/checkJwt';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import pool from './db';
+import { getCategories } from './db-functions';
 
 dotenv.config();
 
@@ -24,6 +26,12 @@ app.get('/api/containers', (req: Request, res: Response) => {
 
 app.get('/api/phone-numbers', checkJwt, (req: Request, res: Response) => {
   res.json([{number: '123-456-7890', idKey: 1}, {number: '098-765-4321', idKey: 2}]); 
+});
+
+// DB functions
+app.get('/api/categories', async (req: Request, res: Response) => {
+  const categories = await getCategories();
+  res.json(categories);
 });
 
 app.listen(PORT, () => {
