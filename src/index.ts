@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { checkJwt } from './middlewares/checkJwt';
 import dotenv from 'dotenv';
 import cors from 'cors';
-import { createContainerContentImageItem, deleteContainerContentImageItem, getCategories, getContainerContentImageItem, getContainerContentImageItems, getContainers } from './db-functions';
+import { addImage, deleteImage, getAllImages, getImage } from './db-functions';
 
 dotenv.config();
 
@@ -44,14 +44,13 @@ app.post(
   checkJwt,
   upload.single('file'),
   async (req, res): Promise<void> => {
-    const containerId = Number(req.body.containerId);
 
-    if (!req.file || isNaN(containerId)) {
-      res.status(400).json({ error: 'Missing file or invalid containerId' });
+    if (!req.file) {
+      res.status(400).json({ error: 'Missing file to upload' });
       return;
     }
 
-    const id = await createContainerContentImageItem(containerId, req.file.filename);
+    const id = await addImage(req.file.filename);
 
     res.status(201).json({ id, filename: req.file.filename });
   }
@@ -60,50 +59,28 @@ app.post(
 
 app.delete('/api/image/:id', checkJwt, async (req, res) => {
   const id = Number(req.params.id);
-  const fileInfo = await getContainerContentImageItem(id);
+  const fileInfo = await getImage(id);
   // delete file
-  fs.unlinkSync(path.join(imagesDir, fileInfo.filename));
+  fs.unlinkSync(path.join(imagesDir, fileInfo.name));
   // delete from db
-  await deleteContainerContentImageItem(id);
+  await deleteImage(id);
   res.status(204).end();
 });
 
 app.get('/api/image/:id', checkJwt, async (req, res) => {
   const id = Number(req.params.id);
-  const fileInfo = await getContainerContentImageItem(id);
-  res.sendFile(path.join(imagesDir, fileInfo.filename));
+  const fileInfo = await getImage(id);
+  res.sendFile(path.join(imagesDir, fileInfo.name));
 });
 
-app.get('/api/container-images', checkJwt, async (req, res) => {
-  const containerId = Number(req.query.containerId);
-  if (isNaN(containerId)) {
-    res.status(400).json({ error: 'Invalid containerId' });
-    return;
-  }
+app.get('/api/images', checkJwt, async (req, res) => {
 
-  const images = await getContainerContentImageItems(containerId);
+  const images = await getAllImages();
   res.json(images);
 });
-// end of files upload
-
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Hello from CAT API');
-});
-
-app.get('/api/containers', checkJwt, async (req: Request, res: Response) => {
-  const containers = await getContainers();
-  res.json(containers);
-});
-
-app.get('/api/phone-numbers', checkJwt, (req: Request, res: Response) => {
-  res.json([{number: '123-456-7890', idKey: 1}, {number: '098-765-4321', idKey: 2}]); 
-});
-
-// DB functions
-app.get('/api/categories', async (req: Request, res: Response) => {
-  const categories = await getCategories();
-  res.json(categories);
 });
 
 app.listen(PORT, () => {

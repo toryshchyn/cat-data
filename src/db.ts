@@ -1,16 +1,7 @@
-import dotenv from 'dotenv';
-import pg from 'pg';
+import knex from 'knex';
 
-dotenv.config();
+const config = require('../knexfile');
+const environment = process.env.NODE_ENV || 'development';
+const db = knex(config[environment]);
 
-const { Pool } = pg;
-
-const pool = new Pool({
-  user: process.env.PGUSER,
-  host: process.env.PGHOST,
-  database: process.env.PGDATABASE,
-  password: process.env.PGPASSWORD,
-  port: Number(process.env.PGPORT),
-});
-
-export default pool;
+export default db;
