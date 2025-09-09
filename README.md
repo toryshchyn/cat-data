@@ -11,3 +11,6 @@ Connection details can be found in the .env file
 ### Management tool
 
 pgAdmin
+
+1. This is the API that provides catalog data
+2. The API supports Auth0
