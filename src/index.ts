@@ -20,7 +20,6 @@ app.use(cors({
   credentials: true,
 }));
 
-//files upload
 const imagesDir = path.join(__dirname, '../images');
 if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir);
 
@@ -36,47 +35,113 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, imagesDir),
   filename: (req, file, cb) => cb(null, uuidv4() + '-' + file.originalname),
 });
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+});
 
-const upload = multer({ storage, fileFilter });
+const asIntId = (value: string) => {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+};
+
+const getContentType = (filename: string) => {
+  const ext = path.extname(filename).toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  return 'application/octet-stream';
+};
 
 app.post(
   '/api/upload',
   checkJwt,
-  upload.single('file'),
-  async (req, res): Promise<void> => {
+  (req, res, next) => {
+    upload.single('file')(req, res, (err: any) => {
+      if (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(413).json({ error: 'File too large (max 10MB).' });
+        }
+        return res.status(415).json({ error: err.message });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        res.status(400).json({ error: 'Missing file to upload.' });
+        return;
+      }
 
-    if (!req.file) {
-      res.status(400).json({ error: 'Missing file to upload' });
-      return;
+      const absPath = path.join(imagesDir, req.file.filename);
+      if (!fs.existsSync(absPath)) {
+        res.status(500).json({ error: 'File not found on disk after upload.' });
+        return;
+      }
+
+      const id = await addImage(req.file.filename);
+
+      res
+        .status(201)
+        .location(`/api/image/${id}`)
+        .json({ id, filename: req.file.filename });
+    } catch (err) {
+      console.error('Upload error:', err);
+      res.status(500).json({ error: 'Internal Server Error' });
     }
-
-    const id = await addImage(req.file.filename);
-
-    res.status(201).json({ id, filename: req.file.filename });
   }
 );
 
-
 app.delete('/api/image/:id', checkJwt, async (req, res) => {
-  const id = Number(req.params.id);
-  const fileInfo = await getImage(id);
-  // delete file
-  fs.unlinkSync(path.join(imagesDir, fileInfo.name));
-  // delete from db
-  await deleteImage(id);
-  res.status(204).end();
+  try {
+    const id = asIntId(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: 'Invalid id.' });
+      return;
+    }
+
+    const fileInfo = await getImage(id);
+    if (!fileInfo) {
+      res.status(404).json({ error: 'Image not found.' });
+      return;
+    }
+
+    await deleteImage(id);
+    res.status(204).end();
+  } catch (err) {
+    console.error('DELETE /api/image/:id error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 });
 
 app.get('/api/image/:id', checkJwt, async (req, res) => {
-  const id = Number(req.params.id);
+  const id = asIntId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: 'Invalid id.' });
+    return;
+  }
+
   const fileInfo = await getImage(id);
-  res.sendFile(path.join(imagesDir, fileInfo.name));
+  if (!fileInfo) {
+    res.status(404).json({ error: 'Image not found.' });
+    return;
+  }
+
+  const absPath = path.join(imagesDir, fileInfo.name);
+
+  res.setHeader('Content-Type', getContentType(fileInfo.name));
+  res.sendFile(absPath);
 });
 
 app.get('/api/images', checkJwt, async (req, res) => {
-
-  const images = await getAllImages();
-  res.json(images);
+  try {
+    const images = await getAllImages();
+    res.status(200).json(Array.isArray(images) ? images : []);
+  } catch (err) {
+    console.error('GET /api/images error:', err);
+    res.status(500).json({ error: 'Failed to fetch images.' });
+  }
 });
 
 app.get('/', (req: Request, res: Response) => {
