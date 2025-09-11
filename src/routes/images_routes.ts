@@ -129,7 +129,7 @@ router.get('/images', checkJwt, async (req, res) => {
     res.status(200).json(Array.isArray(images) ? images : []);
   } catch (err) {
     console.error('GET /api/images error:', err);
-    res.status(500).json({ error: 'Failed to fetch images.' });
+    res.status(500).json({ error: 'Failed to load images.' });
   }
 });
 

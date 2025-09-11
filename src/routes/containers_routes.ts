@@ -34,8 +34,8 @@ router.get('/container/:id', checkJwt, async (req, res): Promise<void> => {
     }
 
     res.status(200).json(container);
-  } catch (e) {
-    console.error('GET /api/containers/:id error:', e);
+  } catch (err) {
+    console.error('GET /api/container/:id error:', err);
     res.status(500).json({ error: 'Failed to load container.' });
   }
 });
@@ -56,12 +56,12 @@ router.post('/container', checkJwt, async (req, res): Promise<void> => {
   try {
     const created = await addContainer(name.trim(), description);
     res.status(201).json(created);
-  } catch (e: any) {
-    if (e?.code === '23505') {
+  } catch (err: any) {
+    if (err?.code === '23505') {
       res.status(409).json({ error: 'Container name must be unique.' });
       return;
     }
-    console.error('POST /api/containers error:', e);
+    console.error('POST /api/container error:', err);
     res.status(500).json({ error: 'Failed to create container.' });
   }
 });
@@ -84,7 +84,7 @@ router.delete('/container/:id', checkJwt, async (req, res) => {
     res.status(204).end();
   } catch (err) {
     console.error('DELETE /api/container/:id error:', err);
-    res.status(500).json({ error: 'International Server Error.' });
+    res.status(500).json({ error: 'Failed to delete container.' });
   }
 });
 
