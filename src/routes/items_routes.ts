@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { checkJwt } from '../middlewares/checkJwt';
 import * as db from '../db-functions';
+import { updateItemWithTags, getItemById } from '../db-functions';
 
 const router = Router();
 
@@ -11,7 +12,7 @@ const asIntId = (v: string) => {
 
 router.get('/items', checkJwt, async (req, res) => {
   try {
-    const items = await db.getAllItems();
+    const items = await db.getItems();
     res.status(200).json(Array.isArray(items) ? items : []);
   } catch (err) {
     console.error('GET /api/items error:', err);
@@ -20,6 +21,8 @@ router.get('/items', checkJwt, async (req, res) => {
 });
 
 router.get('/item/:id', checkJwt, async (req, res): Promise<void> => {
+  console.log("HIT /api/item/:id", req.params.id);
+
   try {
     const id = asIntId(req.params.id);
     if (!id) {
@@ -27,7 +30,7 @@ router.get('/item/:id', checkJwt, async (req, res): Promise<void> => {
       return;
     }
 
-    const item = await db.getItem(id);
+    const item = await db.getItemById(id);
     if (!item) {
       res.status(404).json({ error: 'Item not found.' });
       return;
@@ -45,6 +48,7 @@ router.post('/item', checkJwt, async (req, res): Promise<void> => {
   const description: string | undefined = req.body?.description;
   const container_id = asIntId(String(req.body?.container_id ?? ''));
   const image_id = req.body?.image_id !== undefined ? asIntId(String(req.body.image_id)) : undefined;
+  const tags: number[] = Array.isArray(req.body?.tags) ? req.body.tags : [];
 
   if (!name || !name.trim()) {
     res.status(400).json({ error: 'Name is required.' });
@@ -56,26 +60,30 @@ router.post('/item', checkJwt, async (req, res): Promise<void> => {
   }
 
   try {
-    if (!(await db.containerExists(container_id))) {
+    if (!(await db.isContainerExists(container_id))) {
       res.status(400).json({ error: 'container_id does not exist.' });
       return;
     }
     if (image_id !== undefined && image_id !== null) {
-      if (!image_id || !(await db.imageExists(image_id))) {
+      if (!image_id || !(await db.isImageExists(image_id))) {
         res.status(400).json({ error: 'image_id does not exist.' });
         return;
       }
     }
 
-    const created = await db.addItem({
+    const created = await db.addItemWithTags({
       name: name.trim(),
       description,
       container_id,
       image_id: image_id ?? null,
+      tags,
     });
     res.status(201).json(created);
   } catch (err: any) {
-    if (err?.code === '23505') { res.status(409).json({ error: 'Item name must be unique.' }); return; }
+    if (err?.code === '23505') {
+      res.status(409).json({ error: 'Item name must be unique.' });
+      return;
+    }
     console.error('POST /api/item error:', err);
     res.status(500).json({ error: 'Failed to create item.' });
   }
@@ -89,7 +97,7 @@ router.delete('/item/:id', checkJwt, async (req, res): Promise<void> => {
       return;
     }
 
-    const exists = await db.getItem(id);
+    const exists = await db.getItemById(id);
     if (!exists) {
       res.status(404).json({ error: 'Item not found.' });
       return;
@@ -103,7 +111,7 @@ router.delete('/item/:id', checkJwt, async (req, res): Promise<void> => {
   }
 });
 
-router.get('/items/by-container/:id', checkJwt, async (req, res): Promise<void> => {
+router.get('/items/by-container/:containerId', checkJwt, async (req, res): Promise<void> => {
   const containerId = asIntId(req.params.containerId);
   if (!containerId) {
     res.status(400).json({ error: 'Invalid container id.' });
@@ -111,11 +119,11 @@ router.get('/items/by-container/:id', checkJwt, async (req, res): Promise<void> 
   }
 
   try {
-    if (!(await db.containerExists(containerId))) {
+    if (!(await db.isContainerExists(containerId))) {
       res.status(404).json({ error: 'Container not found.' });
       return;
     }
-    const result = await db.getAllItemsByContainerId(containerId);
+    const result = await db.getItemsByContainerId(containerId);
     res.json(Array.isArray(result) ? result : []);
   } catch (err) {
     console.error('GET /api/items/by-container/:id error:', err);
@@ -123,7 +131,7 @@ router.get('/items/by-container/:id', checkJwt, async (req, res): Promise<void> 
   }
 });
 
-router.get('/items/by-tag/:id', checkJwt, async (req, res): Promise<void> => {
+router.get('/items/by-tag/:tagId', checkJwt, async (req, res): Promise<void> => {
   const tagId = asIntId(req.params.tagId);
   if (!tagId) {
     res.status(400).json({ error: 'Invalid tag id.' });
@@ -131,11 +139,11 @@ router.get('/items/by-tag/:id', checkJwt, async (req, res): Promise<void> => {
   }
 
   try {
-    if (!(await db.tagExists(tagId))) {
+    if (!(await db.isTagExists(tagId))) {
       res.status(404).json({ error: 'Tag not found.' });
       return;
     }
-    const result = await db.getAllItemsByTagId(tagId);
+    const result = await db.getItemsByTagId(tagId);
     res.json(Array.isArray(result) ? result : []);
   } catch (err) {
     console.error('GET /api/items/by-tag/:id error:', err);
@@ -143,66 +151,34 @@ router.get('/items/by-tag/:id', checkJwt, async (req, res): Promise<void> => {
   }
 });
 
-router.put('/item/:id', checkJwt, async (req, res): Promise<void> => {
-  const id = asIntId(req.params.id);
-  if (!id) {
-    res.status(400).json({ error: 'Invalid id.' });
-    return;
-  }
-
-  const has = (k: string) => Object.prototype.hasOwnProperty.call(req.body ?? {}, k);
-
-  if (!has('name') || !has('container_id') || !has('description') || !has('image_id')) {
-    res.status(400).json({ error: 'PUT requires name, container_id, description, image_id.' });
-    return;
-  }
-
-  const rawName = req.body.name;
-  if (typeof rawName !== 'string' || !rawName.trim()) {
-    res.status(400).json({ error: 'Name is required.' });
-    return;
-  }
-
-  const container_id = asIntId(String(req.body.container_id));
-  if (!container_id) {
-    res.status(400).json({ error: 'container_id must be a positive integer.' });
-    return;
-  }
-
-  const description = req.body.description === null ? null : String(req.body.description);
-  let image_id: number | null;
-  if (req.body.image_id === null) image_id = null;
-  else {
-    const img = asIntId(String(req.body.image_id));
-    if (!img) { res.status(400).json({ error: 'image_id must be null or a positive integer.' }); return; }
-    image_id = img;
-  }
-
+router.put('/item/:id', checkJwt, async (req, res) => {
   try {
-    const exists = await db.getItem(id);
-    if (!exists) { res.status(404).json({ error: 'Item not found.' }); return; }
-
-    if (!(await db.containerExists(container_id))) {
-      res.status(400).json({ error: 'container_id does not exist.' });
-      return;
-    }
-    if (image_id !== null && !(await db.imageExists(image_id))) {
-      res.status(400).json({ error: 'image_id does not exist.' });
+    const id = asIntId(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: 'Invalid id.' });
       return;
     }
 
-    const updated = await db.updateItem(id, {
-      name: rawName.trim(),
+    const { name, description, container_id, image_id, tags } = req.body;
+
+    const updated = await updateItemWithTags(id, {
+      name,
       description,
       container_id,
-      image_id
+      image_id,
+      tags,
     });
 
-    res.json(updated);
-  } catch (err: any) {
-    if (err?.code === '23505') { res.status(409).json({ error: 'Item name must be unique.' }); return; }
+    if (!updated) {
+      res.status(404).json({ error: 'Item not found.' });
+      return;
+    }
+
+    const itemWithTags = await getItemById(id);
+    res.status(200).json(itemWithTags);
+  } catch (err) {
     console.error('PUT /api/item/:id error:', err);
-    res.status(500).json({ error: 'Failed to replace item.' });
+    res.status(500).json({ error: 'Failed to update item.' });
   }
 });
 
@@ -229,8 +205,14 @@ router.patch('/item/:id', checkJwt, async (req, res): Promise<void> => {
 
   if (req.body?.container_id !== undefined) {
     const cid = asIntId(String(req.body.container_id));
-    if (!cid) { res.status(400).json({ error: 'Invalid container_id.' }); return; }
-    if (!(await db.containerExists(cid))) { res.status(400).json({ error: 'container_id does not exist.' }); return; }
+    if (!cid) {
+      res.status(400).json({ error: 'Invalid container_id.' });
+      return;
+    }
+    if (!(await db.isContainerExists(cid))) {
+      res.status(400).json({ error: 'container_id does not exist.' });
+      return;
+    }
     patch.container_id = cid;
   }
 
@@ -239,20 +221,35 @@ router.patch('/item/:id', checkJwt, async (req, res): Promise<void> => {
       patch.image_id = null;
     } else {
       const imgId = asIntId(String(req.body.image_id));
-      if (!imgId) { res.status(400).json({ error: 'Invalid image_id.' }); return; }
-      if (!(await db.imageExists(imgId))) { res.status(400).json({ error: 'image_id does not exist.' }); return; }
+      if (!imgId) {
+        res.status(400).json({ error: 'Invalid image_id.' });
+        return;
+      }
+      if (!(await db.isImageExists(imgId))) {
+        res.status(400).json({ error: 'image_id does not exist.' });
+        return;
+      }
       patch.image_id = imgId;
     }
   }
 
-  if (!Object.keys(patch).length) { res.status(400).json({ error: 'Nothing to update.' }); return; }
+  if (!Object.keys(patch).length) {
+    res.status(400).json({ error: 'Nothing to update.' });
+    return;
+  }
 
   try {
     const updated = await db.updateItem(id, patch);
-    if (!updated) { res.status(404).json({ error: 'Item not found.' }); return; }
+    if (!updated) {
+      res.status(404).json({ error: 'Item not found.' });
+      return;
+    }
     res.json(updated);
   } catch (err: any) {
-    if (err?.code === '23505') { res.status(409).json({ error: 'Item name must be unique.' }); return; }
+    if (err?.code === '23505') {
+      res.status(409).json({ error: 'Item name must be unique.' });
+      return;
+    }
     console.error('PATCH /api/item/:id error:', err);
     res.status(500).json({ error: 'Failed to update item.' });
   }

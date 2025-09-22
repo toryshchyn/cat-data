@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { checkJwt } from '../middlewares/checkJwt';
-import { addContainer, deleteContainer, getAllContainers, getContainer } from '../db-functions';
+import { addContainer, deleteContainer, getContainers, getContainerById } from '../db-functions';
 
 const router = Router();
 
@@ -11,7 +11,7 @@ const asIntId = (v: string) => {
 
 router.get('/containers', checkJwt, async (req, res) => {
   try {
-    const containers = await getAllContainers();
+    const containers = await getContainers();
     res.status(200).json(Array.isArray(containers) ? containers : []);
   } catch (err) {
     console.error('GET /api/containers error:', err);
@@ -27,7 +27,7 @@ router.get('/container/:id', checkJwt, async (req, res): Promise<void> => {
       return;
     }
 
-    const container = await getContainer(id);
+    const container = await getContainerById(id);
     if (!container) {
       res.status(404).json({ error: 'Container not found.' });
       return;
@@ -74,7 +74,7 @@ router.delete('/container/:id', checkJwt, async (req, res) => {
       return;
     }
 
-    const exists = await getContainer(id);
+    const exists = await getContainerById(id);
     if (!exists) {
       res.status(404).json({ error: 'Container not found.' });
       return;

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { checkJwt } from '../middlewares/checkJwt';
-import { getAllTags, getTag, addTag, deleteTag } from '../db-functions';
+import { getTags, getItems, getItemsByTagId, getTagById, addTag, deleteTag } from '../db-functions';
 
 const router = Router();
 
@@ -11,11 +11,32 @@ const asIntId = (v: string) => {
 
 router.get('/tags', checkJwt, async (_req, res) => {
   try {
-    const tags = await getAllTags();
+    const tags = await getTags();
     res.status(200).json(Array.isArray(tags) ? tags : []);
   } catch (err) {
     console.error('GET /api/tags error:', err);
     res.status(500).json({ error: 'Failed to load tags.' });
+  }
+});
+
+router.get('/tags-with-counts', checkJwt, async (_req, res) => {
+  try {
+    const tags = await getTags();
+
+    const tagsWithCounts = await Promise.all(
+      tags.map(async (tag) => {
+        const items = await getItemsByTagId(tag.id);
+        return {
+          ...tag,
+          count: items.length,
+        };
+      })
+    );
+
+    res.status(200).json(tagsWithCounts);
+  } catch (err) {
+    console.error("GET /api/tags-with-counts error:", err);
+    res.status(500).json({ error: "Failed to load tags with counts." });
   }
 });
 
@@ -27,7 +48,7 @@ router.get('/tag/:id', checkJwt, async (req, res): Promise<void> => {
       return;
     }
 
-    const tag = await getTag(id);
+    const tag = await getTagById(id);
     if (!tag) {
       res.status(404).json({ error: 'Tag not found.' });
       return;
@@ -73,7 +94,7 @@ router.delete('/tag/:id', checkJwt, async (req, res) => {
       return;
     }
 
-    const exists = await getTag(id);
+    const exists = await getTagById(id);
     if (!exists) {
       res.status(404).json({ error: 'Tag not found.' });
       return;

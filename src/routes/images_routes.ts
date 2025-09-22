@@ -4,12 +4,14 @@ import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { checkJwt } from '../middlewares/checkJwt';
-import { addImage, deleteImage, getAllImages, getImage } from '../db-functions';
+import { addImage, deleteImage, getImages, getImageById } from '../db-functions';
 
 const router = Router();
 
 const imagesDir = path.resolve(process.cwd(), 'images');
-if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir);
+if (!fs.existsSync(imagesDir)) {
+  fs.mkdirSync(imagesDir);
+}
 
 const fileFilter: multer.Options['fileFilter'] = (req, file, cb) => {
   const allowedTypes = ['image/jpeg', 'image/png'];
@@ -37,8 +39,12 @@ const asIntId = (value: string) => {
 
 const getContentType = (filename: string) => {
   const ext = path.extname(filename).toLowerCase();
-  if (ext === '.png') return 'image/png';
-  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.png') {
+    return 'image/png';
+  }
+  if (ext === '.jpg' || ext === '.jpeg') {
+    return 'image/jpeg';
+  }
   return 'application/octet-stream';
 };
 
@@ -69,12 +75,12 @@ router.post(
         return;
       }
 
-      const id = await addImage(req.file.filename);
+      const image = await addImage(req.file.filename);
 
       res
         .status(201)
-        .location(`/api/image/${id}`)
-        .json({ id, filename: req.file.filename });
+        .location(`/api/image/${image.id}`)
+        .json({ id: image.id, filename: image.name });
     } catch (err) {
       console.error('Upload error:', err);
       res.status(500).json({ error: 'Internal Server Error' });
@@ -90,7 +96,7 @@ router.delete('/image/:id', checkJwt, async (req, res) => {
       return;
     }
 
-    const fileInfo = await getImage(id);
+    const fileInfo = await getImageById(id);
     if (!fileInfo) {
       res.status(404).json({ error: 'Image not found.' });
       return;
@@ -111,7 +117,7 @@ router.get('/image/:id', checkJwt, async (req, res) => {
     return;
   }
 
-  const fileInfo = await getImage(id);
+  const fileInfo = await getImageById(id);
   if (!fileInfo) {
     res.status(404).json({ error: 'Image not found.' });
     return;
@@ -125,7 +131,7 @@ router.get('/image/:id', checkJwt, async (req, res) => {
 
 router.get('/images', checkJwt, async (req, res) => {
   try {
-    const images = await getAllImages();
+    const images = await getImages();
     res.status(200).json(Array.isArray(images) ? images : []);
   } catch (err) {
     console.error('GET /api/images error:', err);
