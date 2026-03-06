@@ -14,3 +14,6 @@ pgAdmin
 
 1. This is the API that provides catalog data
 2. The API supports Auth0
+
+Documentation
+https://toryshchyn-cat-data-41.mintlify.app/introduction
