@@ -13,6 +13,12 @@ export type ContainerRow = {
   description: string | null;
 };
 
+export type ContainerWithCount = {
+  id: number;
+  name: string;
+  count: number;
+};
+
 export type ItemRow = {
   id: number;
   name: string;
@@ -21,6 +27,10 @@ export type ItemRow = {
   image_id: number | null;
   created_at: string;
   updated_at: string;
+};
+
+export type ItemSearchRow = ItemRow & {
+  containerName?: string;
 };
 
 export type TagRow = {
@@ -179,8 +189,78 @@ export async function getContainers(): Promise<ContainerRow[]> {
   return db('containers').select('id', 'name', 'description');
 }
 
+export async function getContainersWithCounts(): Promise<ContainerWithCount[]> {
+  const rows = await db('containers as c')
+    .leftJoin('items as i', 'i.container_id', 'c.id')
+    .groupBy('c.id', 'c.name')
+    .select('c.id', 'c.name')
+    .count('i.id as count')
+    .orderBy('c.name', 'asc') as Array<{ id: number; name: string; count: string | number }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    count: Number(row.count) || 0,
+  }));
+}
+
 export async function getItems(): Promise<ItemRow[]> {
   return db('items').select('id', 'name', 'description', 'container_id', 'image_id', 'created_at', 'updated_at');
+}
+
+export async function getItemNameSuggestions(
+  query: string,
+  limit = 15
+): Promise<string[]> {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) {
+    return [];
+  }
+
+  const safeLimit = Math.max(1, Math.min(limit, 20));
+  const prefix = `${q}%`;
+  const contains = `%${q}%`;
+
+  const rows = await db('items')
+    .select('name')
+    .whereRaw('LOWER(name) LIKE ?', [contains])
+    .groupBy('name')
+    .orderByRaw('CASE WHEN LOWER(name) LIKE ? THEN 0 ELSE 1 END', [prefix])
+    .orderBy('name', 'asc')
+    .limit(safeLimit) as Array<{ name: string }>;
+
+  return rows.map((row) => row.name);
+}
+
+export async function searchItemsByName(
+  query: string,
+  limit = 100
+): Promise<ItemSearchRow[]> {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) {
+    return [];
+  }
+
+  const contains = `%${q}%`;
+  const prefix = `${q}%`;
+  const safeLimit = Math.max(1, Math.min(limit, 200));
+
+  return db('items as i')
+    .leftJoin('containers as c', 'c.id', 'i.container_id')
+    .whereRaw('LOWER(i.name) LIKE ?', [contains])
+    .select(
+      'i.id',
+      'i.name',
+      'i.description',
+      'i.container_id',
+      'i.image_id',
+      'i.created_at',
+      'i.updated_at',
+      db.raw('c.name as "containerName"')
+    )
+    .orderByRaw('CASE WHEN LOWER(i.name) LIKE ? THEN 0 ELSE 1 END', [prefix])
+    .orderBy('i.name', 'asc')
+    .limit(safeLimit);
 }
 
 export async function getTags(): Promise<TagRow[]> {

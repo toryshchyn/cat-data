@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { checkJwt } from '../middlewares/checkJwt';
-import { addContainer, deleteContainer, getContainers, getContainerById } from '../db-functions';
+import { addContainer, deleteContainer, getContainers, getContainerById, getContainersWithCounts } from '../db-functions';
 
 const router = Router();
 
@@ -16,6 +16,16 @@ router.get('/containers', checkJwt, async (req, res) => {
   } catch (err) {
     console.error('GET /api/containers error:', err);
     res.status(500).json({ error: 'Failed to load containers.' });
+  }
+});
+
+router.get('/containers/with-counts', checkJwt, async (_req, res) => {
+  try {
+    const containers = await getContainersWithCounts();
+    res.status(200).json(Array.isArray(containers) ? containers : []);
+  } catch (err) {
+    console.error('GET /api/containers/with-counts error:', err);
+    res.status(500).json({ error: 'Failed to load containers with counts.' });
   }
 });
 

@@ -20,6 +20,28 @@ router.get('/items', checkJwt, async (req, res) => {
   }
 });
 
+router.get('/items/name-suggestions', checkJwt, async (req, res) => {
+  try {
+    const q = typeof req.query.q === 'string' ? req.query.q : '';
+    const suggestions = await db.getItemNameSuggestions(q, 15);
+    res.status(200).json(Array.isArray(suggestions) ? suggestions : []);
+  } catch (err) {
+    console.error('GET /api/items/name-suggestions error:', err);
+    res.status(500).json({ error: 'Failed to load item name suggestions.' });
+  }
+});
+
+router.get('/items/search', checkJwt, async (req, res) => {
+  try {
+    const name = typeof req.query.name === 'string' ? req.query.name : '';
+    const items = await db.searchItemsByName(name, 100);
+    res.status(200).json(Array.isArray(items) ? items : []);
+  } catch (err) {
+    console.error('GET /api/items/search error:', err);
+    res.status(500).json({ error: 'Failed to search items by name.' });
+  }
+});
+
 router.get('/item/:id', checkJwt, async (req, res): Promise<void> => {
   console.log("HIT /api/item/:id", req.params.id);
 
