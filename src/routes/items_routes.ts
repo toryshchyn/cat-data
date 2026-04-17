@@ -102,10 +102,6 @@ router.post('/item', checkJwt, async (req, res): Promise<void> => {
     });
     res.status(201).json(created);
   } catch (err: any) {
-    if (err?.code === '23505') {
-      res.status(409).json({ error: 'Item name must be unique.' });
-      return;
-    }
     console.error('POST /api/item error:', err);
     res.status(500).json({ error: 'Failed to create item.' });
   }
@@ -268,10 +264,6 @@ router.patch('/item/:id', checkJwt, async (req, res): Promise<void> => {
     }
     res.json(updated);
   } catch (err: any) {
-    if (err?.code === '23505') {
-      res.status(409).json({ error: 'Item name must be unique.' });
-      return;
-    }
     console.error('PATCH /api/item/:id error:', err);
     res.status(500).json({ error: 'Failed to update item.' });
   }
