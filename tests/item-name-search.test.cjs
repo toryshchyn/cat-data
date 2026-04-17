@@ -9,11 +9,13 @@ const appDb = require('../dist/db.js').default;
 const db = knexFactory(rootConfig.development);
 
 test('item name suggestions/search are case-insensitive and stable', async () => {
-  const { getItemNameSuggestions, searchItemsByName } = require('../dist/db-functions.js');
+  const { getItemNameSuggestions, searchItemsByName, searchItemsByText } = require('../dist/db-functions.js');
   const stamp = Date.now();
 
   let imageId;
   let containerId;
+  let secondContainerId;
+  let tagId;
   const itemIds = [];
 
   try {
@@ -27,11 +29,22 @@ test('item name suggestions/search are case-insensitive and stable', async () =>
       .returning(['id']);
     containerId = typeof container === 'object' ? container.id : container;
 
+    const [secondContainer] = await db('containers')
+      .insert({ name: `test-search-container-2-${stamp}`, description: 'search fixtures 2' })
+      .returning(['id']);
+    secondContainerId = typeof secondContainer === 'object' ? secondContainer.id : secondContainer;
+
+    const [tag] = await db('tags')
+      .insert({ name: `Label ${stamp}` })
+      .returning(['id']);
+    tagId = typeof tag === 'object' ? tag.id : tag;
+
     const insertedItems = await db('items')
       .insert([
         { name: `Alpha ${stamp}`, container_id: containerId, image_id: imageId },
         { name: `alpha bolt ${stamp}`, container_id: containerId, image_id: imageId },
-        { name: `Xalpha suffix ${stamp}`, container_id: containerId, image_id: imageId },
+        { name: `Xalpha suffix ${stamp}`, container_id: containerId, image_id: imageId, description: `Contains ${stamp}` },
+        { name: `Bolt outside ${stamp}`, container_id: secondContainerId, image_id: imageId, description: `From container ${secondContainerId}` },
       ])
       .returning(['id']);
     for (const row of insertedItems) {
@@ -55,9 +68,29 @@ test('item name suggestions/search are case-insensitive and stable', async () =>
     const shortSearch = await searchItemsByName('a', 20);
     assert.deepEqual(blankSuggestions, [], 'blank query returns empty suggestions');
     assert.deepEqual(shortSearch, [], 'too-short search query returns empty array');
+
+    await db('items_to_tags').insert({ item_id: itemIds[0], tag_id: tagId });
+
+    const byTagName = await searchItemsByText(`label ${stamp}`, { limit: 20 });
+    assert.ok(byTagName.some((row) => row.id === itemIds[0]), 'text search matches by tag name');
+
+    const byDescription = await searchItemsByText(`contains ${stamp}`, { limit: 20 });
+    assert.ok(byDescription.some((row) => row.id === itemIds[2]), 'text search matches by description');
+
+    const byContainer = await searchItemsByText(`bolt ${stamp}`, { containerId, limit: 20 });
+    assert.ok(byContainer.every((row) => row.container_id === containerId), 'container filter limits results');
   } finally {
     if (itemIds.length) {
+      await db('items_to_tags').whereIn('item_id', itemIds).del();
+    }
+    if (tagId) {
+      await db('tags').where({ id: tagId }).del();
+    }
+    if (itemIds.length) {
       await db('items').whereIn('id', itemIds).del();
+    }
+    if (secondContainerId) {
+      await db('containers').where({ id: secondContainerId }).del();
     }
     if (containerId) {
       await db('containers').where({ id: containerId }).del();
@@ -83,6 +116,11 @@ test('search endpoints are protected by checkJwt middleware', () => {
     source,
     /router\.get\('\/items\/search',\s*checkJwt,/,
     'search endpoint should require checkJwt'
+  );
+  assert.match(
+    source,
+    /router\.get\('\/items\/search-text',\s*checkJwt,/,
+    'search-text endpoint should require checkJwt'
   );
 });
 

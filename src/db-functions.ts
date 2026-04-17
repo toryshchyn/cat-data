@@ -263,6 +263,62 @@ export async function searchItemsByName(
     .limit(safeLimit);
 }
 
+export async function searchItemsByText(
+  query: string,
+  options?: { containerId?: number; limit?: number }
+): Promise<ItemSearchRow[]> {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) {
+    return [];
+  }
+
+  const contains = `%${q}%`;
+  const prefix = `${q}%`;
+  const safeLimit = Math.max(1, Math.min(options?.limit ?? 100, 200));
+
+  const qb = db('items as i')
+    .leftJoin('containers as c', 'c.id', 'i.container_id')
+    .modify((builder) => {
+      if (options?.containerId) {
+        builder.where('i.container_id', options.containerId);
+      }
+    })
+    .andWhere((builder) => {
+      builder
+        .whereRaw('LOWER(i.name) LIKE ?', [contains])
+        .orWhereRaw('LOWER(COALESCE(i.description, \'\')) LIKE ?', [contains])
+        .orWhereExists(function () {
+          this.select(db.raw('1'))
+            .from('items_to_tags as it')
+            .join('tags as t', 't.id', 'it.tag_id')
+            .whereRaw('it.item_id = i.id')
+            .andWhereRaw('LOWER(t.name) LIKE ?', [contains]);
+        });
+    })
+    .select(
+      'i.id',
+      'i.name',
+      'i.description',
+      'i.container_id',
+      'i.image_id',
+      'i.created_at',
+      'i.updated_at',
+      db.raw('c.name as "containerName"')
+    )
+    .orderByRaw(
+      `CASE
+        WHEN LOWER(i.name) LIKE ? THEN 0
+        WHEN LOWER(COALESCE(i.description, '')) LIKE ? THEN 1
+        ELSE 2
+      END`,
+      [prefix, prefix]
+    )
+    .orderBy('i.name', 'asc')
+    .limit(safeLimit);
+
+  return qb;
+}
+
 export async function getTags(): Promise<TagRow[]> {
   return db('tags').select('id', 'name');
 }

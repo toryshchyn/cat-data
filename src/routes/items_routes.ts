@@ -42,6 +42,28 @@ router.get('/items/search', checkJwt, async (req, res) => {
   }
 });
 
+router.get('/items/search-text', checkJwt, async (req, res) => {
+  try {
+    const q = typeof req.query.q === 'string' ? req.query.q : '';
+    const containerIdRaw = typeof req.query.container_id === 'string' ? req.query.container_id : '';
+    const containerId = containerIdRaw ? asIntId(containerIdRaw) : null;
+
+    if (containerIdRaw && !containerId) {
+      res.status(400).json({ error: 'container_id must be a positive integer.' });
+      return;
+    }
+
+    const items = await db.searchItemsByText(q, {
+      containerId: containerId ?? undefined,
+      limit: 100,
+    });
+    res.status(200).json(Array.isArray(items) ? items : []);
+  } catch (err) {
+    console.error('GET /api/items/search-text error:', err);
+    res.status(500).json({ error: 'Failed to search items.' });
+  }
+});
+
 router.get('/item/:id', checkJwt, async (req, res): Promise<void> => {
   console.log("HIT /api/item/:id", req.params.id);
 
